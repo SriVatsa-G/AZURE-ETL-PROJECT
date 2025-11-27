@@ -31,6 +31,11 @@ This project implements the **Medallion Architecture**:
 
 ## 🚀 Key Features
 
+### ✔ Multipe Source Data Integration
+- **OnPrem Data** Ingested using **Microsoft Integration Runtime**
+- Data Ingestion via **REST API** from Github
+- Data pulled using Copy activity of ADF from **Azure SQL DB**
+  
 ### ✔ Azure Data Factory Pipelines
 - Multiple pipelines orchestrating ingestion → transformation
 - Data validation & failure logging
