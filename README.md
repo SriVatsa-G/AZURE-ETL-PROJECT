@@ -1,85 +1,186 @@
-# 🌐 Azure Data Factory End-to-End ETL Pipeline Using Medallion Architecture (Bronze → Silver → Lakehouse)
+# 🚀 Azure Data Factory – End-to-End ETL Pipeline (Bronze → Silver Delta Lakehouse)
 
-This project demonstrates a **real-world Data Engineering pipeline** built on **Azure Data Factory**, using the **Medallion Architecture** (Bronze, Silver, Gold) and **Delta Lake** on ADLS Gen2 for scalable, incremental, and cost-efficient data processing.
+This repository showcases a complete Azure Data Engineering pipeline built using **Azure Data Factory**, **ADLS Gen2**, **Delta Lake**, **Self-Hosted Integration Runtime**, and **Azure Logic Apps**.  
+The solution follows the **Medallion Architecture (Bronze → Silver)** and implements:
 
-> **Goal:** Build an enterprise-style ETL pipeline to ingest raw data → clean & transform → create analytics-ready Delta tables, all with minimal compute cost and no paid services beyond ADLS storage.
+- API ingestion  
+- On-premises ingestion  
+- SQL incremental ingestion  
+- Delta-based transformation  
+- Dynamic mapping  
+- Parent pipeline orchestration  
+- Failure alerting using Logic Apps  
 
----
-
-## 📁 Architecture Overview
-
-This project implements the **Medallion Architecture**:
-
-### **Bronze Layer**
-- Raw files ingested into ADLS Gen2 using ADF Copy Activity
-- No transformations applied
-- Schema is semi-structured or structured depending on the source
-
-### **Silver Layer**
-- Cleaned & structured Delta tables
-- UPSERT logic applied (using ADF data flows)
-- Data quality checks
-- Stored in `silver/` container in ADLS Gen2
-
-### **Gold Layer (Lakehouse Ready)**
-- **No SQL Warehouse, No Synapse, No Logic Apps**
-- Data is already analytics-ready in **Delta format**
-- Intended for Power BI or notebook-based analytics
-- Zero additional Azure cost
+All components were built without Synapse or Databricks, keeping the project **cost-optimized and production-ready**.
 
 ---
 
-## 🚀 Key Features
+## 📘 Architecture Overview
 
-### ✔ Multiple Source Data Integration
-- **OnPrem Data** Ingested using **Microsoft Integration Runtime**
-- Data Ingestion via **REST API** from Github
-- Data pulled using Copy activity of ADF from **Azure SQL DB**
+             On-Prem / API / SQL Sources
+                         │
+                         ▼
+                   BRONZE LAYER
+           Raw Zone • JSON • CSV • SQL Dumps
+                         │
+                         ▼
+                   SILVER LAYER
+          Delta Lake • Cleaned • Curated • UPSERT
+                         │
+                         ▼
+                  Analytics / BI Layer
+
+
+---
+
+## 📂 Technologies Used
+
+| Purpose             | Service                           |
+|---------------------|-----------------------------------|
+| Orchestration       | Azure Data Factory                |
+| Storage             | ADLS Gen2                         |
+| File Format         | Delta (Silver), JSON/CSV (Bronze) |
+| Transformations     | ADF Data Flows                    |
+| Integration Runtime | AutoResolve IR + Self-Hosted IR   |
+| Alerts              | Azure Logic Apps                  |
+| Monitoring          | ADF Pipeline Runs                 |
+
+---
+
+# 🟦 1. API Ingestion (GitHub → ADLS Bronze)
+
+This pipeline ingests JSON data from GitHub using the **Web API + Copy Activity** pattern.
+
+### Key Features
+- REST API ingestion using Web activity  
+- Base URL + Relative URL handling  
+- Writes raw JSON into: adls/bronze/github/
+
+
+### Workflow
+1. Web activity triggers API call  
+2. Copy Activity writes API response to ADLS  
+3. Data stored as JSON in the Bronze zone  
+
+---
+
+# 🟩 2. On-Premise Ingestion using Self-Hosted IR
+
+This pipeline ingests CSV files from a local file system using a **Self-Hosted Integration Runtime**.
+
+### Key Features
+- Reads multiple CSV files dynamically  
+- Uses a pipeline parameter: @pipeline().parameters.files
+- Dynamic column mapping based on filename  
+- Writes files into: adls/bronze/onprem/
+
+
+### Dynamic Mapping Parameters
+- `p_mapping_passenger`  
+- `p_mapping_airline`  
+- `p_mapping_flight`  
+
+### Flow
+- ForEach → Loop through files  
+- Copy Activity → Map columns based on metadata  
+
+---
+
+# 🟧 3. SQL → Data Lake Incremental Ingestion (Watermark Load)
+
+A robust incremental ingestion pipeline retrieves only changed rows from SQL using a **watermark** file stored in ADLS.
+
+### Steps
+1. **Lookup LastLoad** → Read previous timestamp  
+2. **Lookup LatestLoad** → Read SQL table’s MAX(modified_date)  
+3. **CopySQLData** → Copy only new/updated rows  
+4. **WaterMark** → Update ADLS watermark file  
+
+### Benefits
+- Efficient incremental ingestion  
+- Reduces load and cost  
+- Reliable change tracking  
+
+---
+
+# 🟪 4. Silver Layer Transformations Using Delta Lake
+
+ADF Mapping Data Flows are used to clean and prepare data for analytics.
+
+### Outputs (Delta Tables)
+- `DimPassenger`
+- `DimAirline`
+- `DimFlight`
+- `DimAirport`
+- `FactBookings`
+
+### Transformations Include
+- Data type casting  
+- Null and inconsistency handling   
+- Derived columns  
+- UPSERT into Delta files  
+
+### Example Transformation (Gender)
+`iif(gender == 'M', 'Male', 'Female')`
+
+---
+
+# 🟩 5. Parent Pipeline – End-to-End Orchestration
+
+The parent pipeline orchestrates all ingestion and transformation workflows sequentially.
+
+Tasks Executed in Sequence:
+
+- On-Prem ingestion
+- API ingestion
+- SQL incremental ingestion
+- Web activity → Trigger Logic App
   
-### ✔ Azure Data Factory Pipelines
-- Multiple pipelines orchestrating ingestion → transformation
-- Data validation & failure logging
-- Parameterized for extensibility
+### Parameter Passing
+- Parent pipeline passes dynamic parameters to each child pipeline.
 
-### ✔ Delta Lake on ADLS Gen2
-- Efficient storage format for incremental loads  
-- Supports **UPSERT / MERGE** operations  
-- Future-proof Lakehouse structure
-
-### ✔ Cost-Optimized Design
-This project intentionally avoids:
-- Synapse Dedicated SQL Pool
-- Logic Apps
-- SQL Database
-- Serverless SQL
-- Databricks
-
-Only **ADLS Gen2 + ADF** are used.
-
-### ✔ Incremental Data Processing
-- Silver layer handles updated records without duplication  
-- Uses surrogate keys / hash comparisons (optional)
-
-### ✔ Data Modeling
-- Fact and Dimension folders created in Silver  
-- Star-schema aligned structure for reporting tools
+### Example Web Activity Payload
+```
+{
+"pipeline_name": "@{pipeline().Pipeline}",
+  "run_id": "@{pipeline().RunId}",
+  "status": "@{activity('Execute SQL To DataLake').Status}",
+  "error": "@{if(equals(activity('Execute SQL To DataLake').Status,'Failed'), string(activity('Execute SQL To DataLake').error), 'No error')}"
+}
+```
 
 ---
 
-## 🛠️ Tech Stack
+# 🟪 6. Logic Apps – Pipeline Failure Alerts
 
-| Component      | Technology                                |
-|----------------|-------------------------------------------|
-| Ingestion      | Azure Data Factory (Copy Activity)        |
-| Transformation | ADF Mapping Data Flow (Silver layer only) |
-| Storage        | ADLS Gen2 (Delta + Parquet)               |
-| Format         | Delta Lake                                |
-| Orchestration  | Azure Data Factory                        |
-| Visualization  | Power BI (optional, import mode)          |
+Logic Apps is used to send an email when any child pipeline fails.
 
----
+### Components
+1. HTTP Trigger
+2. JSON Schema validation
+3. Send Email (V2) connector
 
-## 📂 Folder Structure (ADLS Gen2)
+### JSON Schema
+```
+{
+  "type": "object",
+  "properties": {
+    "pipeline_name": { "type": "string" },
+    "run_id": { "type": "string" },
+    "status": { "type": "string" },
+    "error": { "type": "string" }
+  }
+}
+```
+Email Includes
+  1. Pipeline name
+  2. Status
+  3. Error message
+  4. Run ID
+
+
+# 🗄️ ADLS Folder Structure
+```
 adls/
  ├── bronze/
  │     ├── github/
@@ -87,10 +188,24 @@ adls/
  │     └── sql/
  │
  ├── silver/
- │     ├── DimAirline/
  │     ├── DimPassenger/
+ │     ├── DimAirline/
  │     ├── DimFlight/
  │     ├── DimAirport/
  │     └── FactBookings/
  │
- └── gold/   (future)
+ └── gold/   (future enhancement)
+```
+
+# 🏆 Key Highlights
+
+```
+1. Fully automated Medallion Architecture
+2. Metadata-driven ingestion flows
+3. API, On-Prem, and SQL sources unified
+4. Delta Lake UPSERT logic implemented
+5. Watermark-based incremental SQL ingestion
+6. Parent pipeline for full orchestration
+7. Logic Apps for real-time failure alerts
+8. Optimized for zero-cost Azure usage
+```
