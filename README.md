@@ -80,4 +80,17 @@ Only **ADLS Gen2 + ADF** are used.
 ---
 
 ## 📂 Folder Structure (ADLS Gen2)
-
+adls/
+ ├── bronze/
+ │     ├── github/
+ │     ├── onprem/
+ │     └── sql/
+ │
+ ├── silver/
+ │     ├── DimAirline/
+ │     ├── DimPassenger/
+ │     ├── DimFlight/
+ │     ├── DimAirport/
+ │     └── FactBookings/
+ │
+ └── gold/   (future)
